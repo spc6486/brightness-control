@@ -56,6 +56,37 @@ sudo bash install.sh 19    # GPIO19, physical pin 35
 sudo /opt/brightness-control/install.sh --uninstall
 ```
 
+## Finding the DIM Pin
+
+Most LCD controller boards (TLT-IPAD3, VS-RTD2556, etc.) have a DIM or
+PWM pad that controls the backlight LED driver's duty cycle. To locate it:
+
+1. **Check the board silkscreen** — look for pads or pins labeled DIM,
+   PWM, ADJ, or BL_PWM near the backlight LED driver IC or the panel
+   connector.
+
+2. **Identify the LED driver IC** — look for a small IC near an inductor
+   (often marked 2R2 or 4R7) and a large capacitor. The DIM/PWM input
+   is usually one of its pins.
+
+3. **Verify the pad with a manual test** — with the board powered and
+   EN held HIGH, briefly connect the candidate pad to GND through a
+   1kΩ resistor. If the backlight turns off, you've found the DIM pin.
+
+4. **Check the pin behavior:**
+   - DIM → GND (1kΩ): backlight OFF
+   - DIM floating: may be ON or OFF depending on the board's pull-up
+   - DIM → 3.3V (1kΩ): backlight ON
+
+   If mid-level DC voltages (e.g., 1.5V) also turn the backlight off,
+   the pin is **digital** (expects clean PWM edges, not analog levels).
+   Hardware PWM from the Pi 5 is ideal for this.
+
+5. **Measure the idle voltage** — with DIM disconnected, measure the
+   voltage on the pad. If it reads ~4–5V, the board has an internal
+   pull-up. The 1kΩ series resistor in the wiring section protects the
+   Pi GPIO from this higher voltage.
+
 ## Wiring
 
 Connect the chosen GPIO pin to your display controller board's DIM/PWM
