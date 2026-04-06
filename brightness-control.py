@@ -328,14 +328,16 @@ class BrightnessApp:
 
     def _build_menu(self):
         # Touch-friendly CSS (matches volume-control styling)
-        css = Gtk.CssProvider()
-        css.load_from_data(b"""
-            scale trough { min-width: 480px; min-height: 48px; }
-            scale slider { min-width: 48px;  min-height: 48px; }
-        """)
-        Gtk.StyleContext.add_provider_for_screen(
-            Gdk.Screen.get_default(), css,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        screen = Gdk.Screen.get_default()
+        if screen:
+            css = Gtk.CssProvider()
+            css.load_from_data(b"""
+                scale trough { min-width: 480px; min-height: 48px; }
+                scale slider { min-width: 48px;  min-height: 48px; }
+            """)
+            Gtk.StyleContext.add_provider_for_screen(
+                screen, css,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
         self.menu = Gtk.Menu()
 
