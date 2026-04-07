@@ -48,11 +48,10 @@ SETTINGS_FILE = CONFIG_DIR / "settings.json"
 LOCK_FILE = CONFIG_DIR / ".lock"
 LOG_FILE = CONFIG_DIR / "log.txt"
 
-PWM_PERIOD_NS = 40000   # 25 kHz
-
 DEFAULT_SETTINGS = {
     "gpio_pin": 12,
     "brightness": 100,
+    "pwm_frequency": 25000,
     "auto_dim_enabled": False,
     "auto_dim_minutes": 5,
     "hdmi_off_delay_minutes": 2,
@@ -65,9 +64,15 @@ DEFAULT_SETTINGS = {
 class PWMController:
     """Read/write RP1 hardware PWM via sysfs."""
 
-    def __init__(self):
+    def __init__(self, frequency=25000):
         self.channel_path = None
+        self.set_frequency(frequency)
         self._find_channel()
+
+    def set_frequency(self, frequency):
+        """Update PWM frequency (Hz). Recalculates period."""
+        self.frequency = max(1, int(frequency))
+        self.period_ns = 1000000000 // self.frequency
 
     def _find_channel(self):
         base = Path("/sys/class/pwm")
@@ -76,18 +81,34 @@ class PWMController:
             if (candidate / "duty_cycle").exists():
                 self.channel_path = candidate
                 return
-        logging.warning("PWM channel not found — brightness control unavailable")
+        logging.warning("PWM channel not found — "
+                        "brightness control unavailable")
 
     def is_ready(self):
         return (self.channel_path is not None
                 and (self.channel_path / "duty_cycle").exists())
 
+    def apply_frequency(self):
+        """Write the current period to sysfs. Call after changing frequency."""
+        if not self.is_ready():
+            return False
+        try:
+            # Must set duty to 0 before changing period
+            (self.channel_path / "duty_cycle").write_text("0")
+            (self.channel_path / "period").write_text(
+                str(self.period_ns))
+            return True
+        except OSError as e:
+            logging.error("Failed to set PWM period: %s", e)
+            return False
+
     def get_brightness(self):
         if not self.is_ready():
             return 100
         try:
-            duty = int((self.channel_path / "duty_cycle").read_text().strip())
-            return max(0, min(100, round(duty * 100 / PWM_PERIOD_NS)))
+            duty = int(
+                (self.channel_path / "duty_cycle").read_text().strip())
+            return max(0, min(100, round(duty * 100 / self.period_ns)))
         except (OSError, ValueError):
             return 100
 
@@ -96,7 +117,7 @@ class PWMController:
         if not self.is_ready():
             logging.error("PWM not ready, cannot set brightness")
             return False
-        duty = PWM_PERIOD_NS * pct // 100
+        duty = self.period_ns * pct // 100
         try:
             (self.channel_path / "duty_cycle").write_text(str(duty))
             return True
@@ -252,7 +273,7 @@ class BrightnessApp:
 
     def __init__(self):
         self.settings = self._load_settings()
-        self.pwm = PWMController()
+        self.pwm = PWMController(self.settings["pwm_frequency"])
         self.hdmi = HDMIManager()
         self.idle_watcher = None
         self.hdmi_off_timer = None
@@ -543,6 +564,27 @@ class BrightnessApp:
         grid.attach(self._settings_hdmi_delay, 1, row, 1, 1)
         row += 1
 
+        # PWM frequency
+        lbl = Gtk.Label(label="PWM frequency (Hz):", xalign=0)
+        grid.attach(lbl, 0, row, 1, 1)
+        self._settings_frequency = Gtk.SpinButton.new_with_range(
+            25, 100000, 25)
+        self._settings_frequency.set_value(
+            self.settings["pwm_frequency"])
+        self._settings_frequency.connect(
+            "value-changed", self._on_settings_frequency)
+        grid.attach(self._settings_frequency, 1, row, 1, 1)
+        row += 1
+
+        hint = Gtk.Label(xalign=0)
+        hint.set_markup(
+            '<small>Lower values may improve dimming range.\n'
+            'Increase if you hear whine or see flicker.</small>')
+        hint.set_opacity(0.6)
+        grid.attach(hint, 0, row, 2, 1)
+        row += 1
+
+        # GPIO pin (informational)
         lbl = Gtk.Label(label="GPIO pin:", xalign=0)
         grid.attach(lbl, 0, row, 1, 1)
         pin_label = Gtk.Label(label="GPIO%d" % self.settings["gpio_pin"], xalign=0)
@@ -587,6 +629,16 @@ class BrightnessApp:
         val = int(spin.get_value())
         self.settings["hdmi_off_delay_minutes"] = val
         self._save_settings()
+
+    def _on_settings_frequency(self, spin):
+        val = int(spin.get_value())
+        self.settings["pwm_frequency"] = val
+        self.pwm.set_frequency(val)
+        self.pwm.apply_frequency()
+        # Reapply current brightness at new frequency
+        self.pwm.set_brightness(self.settings["brightness"])
+        self._save_settings()
+        logging.info("PWM frequency changed to %d Hz", val)
 
     # ── Auto-Dim / Idle ───────────────────────────────────────────
 

@@ -16,7 +16,8 @@ load.
 ## Features
 
 - **System tray indicator** with vertical slider and quick presets
-- **Settings dialog** for idle timeout, minimum brightness, HDMI off delay
+- **Settings dialog** for idle timeout, minimum brightness, HDMI off delay,
+  and PWM frequency
 - **Hardware PWM** at 25 kHz via sysfs (flicker-free, CPU-independent)
 - **Auto-dim** on idle with configurable timeout
 - **HDMI power-off** after extended idle, with full display state restore
@@ -140,10 +141,34 @@ User settings: `~/.config/brightness-control/settings.json`
 |-----------------------|---------|--------------------------------------|
 | gpio_pin              | 12      | Hardware PWM GPIO (12, 13, 18, 19)   |
 | brightness            | 100     | Last-set brightness percentage       |
+| pwm_frequency         | 25000   | PWM frequency in Hz (board-dependent)|
 | auto_dim_enabled      | false   | Enable idle dimming                  |
 | auto_dim_minutes      | 5       | Minutes of idle before auto-dim      |
 | hdmi_off_delay_minutes| 2       | Minutes after dim before HDMI off    |
 | min_brightness        | 10      | Minimum brightness percentage        |
+
+### PWM Frequency
+
+Different LCD backlight driver ICs respond differently to PWM signals.
+The default 25 kHz works well for boards that accept digital PWM
+directly (e.g., TLT-IPAD3), but some drivers internally sample the
+PWM and quantize it into a limited number of brightness steps. If you
+see staircase-like brightness changes instead of smooth dimming, try
+lowering the frequency.
+
+**General guidance:**
+
+- **25,000 Hz** (default) — silent, works well with most digital DIM
+  inputs. Start here.
+- **1,000–10,000 Hz** — try if 25 kHz only produces a few brightness
+  levels. May introduce audible coil whine on some boards.
+- **60–200 Hz** — can unlock more brightness steps on boards with
+  internal PWM sampling, at the cost of potential flicker at the
+  lowest end of this range.
+
+To find the best frequency for your board, adjust the value in
+Settings and observe whether brightness transitions become smoother.
+If you hear coil whine or see flicker, increase the frequency.
 
 ## Integration
 

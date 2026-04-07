@@ -31,9 +31,11 @@ SETTINGS="$CONFIG_HOME/settings.json"
 
 DEFAULT_PIN=12
 DEFAULT_BRIGHTNESS=100
+DEFAULT_FREQUENCY=25000
 
 PIN=$DEFAULT_PIN
 BRIGHTNESS=$DEFAULT_BRIGHTNESS
+FREQUENCY=$DEFAULT_FREQUENCY
 
 if [ -f "$SETTINGS" ]; then
     PIN=$(python3 -c "
@@ -51,7 +53,17 @@ try:
 except Exception:
     print($DEFAULT_BRIGHTNESS)
 " 2>/dev/null || echo $DEFAULT_BRIGHTNESS)
+
+    FREQUENCY=$(python3 -c "
+import json
+try:
+    print(json.load(open('$SETTINGS')).get('pwm_frequency', $DEFAULT_FREQUENCY))
+except Exception:
+    print($DEFAULT_FREQUENCY)
+" 2>/dev/null || echo $DEFAULT_FREQUENCY)
 fi
+
+PERIOD=$((1000000000 / FREQUENCY))
 
 # ── Find or set up PWM channel ────────────────────────────────────────
 
@@ -86,26 +98,26 @@ find_channel() {
 # ── Init: early boot, backlight OFF ───────────────────────────────────
 
 do_init() {
-    log "Init: PWM on GPIO${PIN}, backlight OFF"
+    log "Init: PWM on GPIO${PIN} at ${FREQUENCY}Hz, backlight OFF"
     setup_channel
-    echo 40000 > "$CHAN/period"
-    echo 0     > "$CHAN/duty_cycle"
-    echo 1     > "$CHAN/enable"
+    echo $PERIOD > "$CHAN/period"
+    echo 0      > "$CHAN/duty_cycle"
+    echo 1      > "$CHAN/enable"
     log "Init complete: backlight held OFF"
 }
 
 # ── Restore: set saved brightness + permissions ───────────────────────
 
 do_restore() {
-    log "Restore: setting brightness to ${BRIGHTNESS}%"
+    log "Restore: setting brightness to ${BRIGHTNESS}% at ${FREQUENCY}Hz"
     find_channel
-    DUTY=$((40000 * BRIGHTNESS / 100))
+    DUTY=$((PERIOD * BRIGHTNESS / 100))
     echo "$DUTY" > "$CHAN/duty_cycle"
 
     chgrp -R gpio "$CHAN/" 2>/dev/null || true
     chmod g+w "$CHAN/duty_cycle" "$CHAN/enable" 2>/dev/null || true
 
-    log "PWM ready: GPIO${PIN}, ${BRIGHTNESS}%, chip=$CHIP"
+    log "PWM ready: GPIO${PIN}, ${BRIGHTNESS}%, ${FREQUENCY}Hz, chip=$CHIP"
 }
 
 # ── Dispatch ──────────────────────────────────────────────────────────

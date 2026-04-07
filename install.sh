@@ -218,6 +218,7 @@ if [ ! -f "$USER_CONFIG/settings.json" ]; then
 {
   "gpio_pin": $GPIO_PIN,
   "brightness": 100,
+  "pwm_frequency": 25000,
   "auto_dim_enabled": false,
   "auto_dim_minutes": 5,
   "hdmi_off_delay_minutes": 2,
