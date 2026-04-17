@@ -285,10 +285,12 @@ class BrightnessApp:
         self.settings_window = None
         self._save_timer = None
 
+        # Apply configured frequency and restore saved brightness.
+        # The boot service may have used different settings if the
+        # config was updated after last boot.
         if self.pwm.is_ready():
-            actual = self.pwm.get_brightness()
-            if actual != self.settings["brightness"]:
-                self.settings["brightness"] = actual
+            self.pwm.apply_frequency()
+            self.pwm.set_brightness(self.settings["brightness"])
 
         self._build_indicator()
         self._build_menu()
